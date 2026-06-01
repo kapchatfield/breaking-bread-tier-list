@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARAS Tier List Builder</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital@1&family=Barlow+Condensed:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: #141619;
+      color: #ECECEC;
+      font-family: 'Barlow Condensed', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { min-height: 100vh; }
+
+    @keyframes goldPop {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.97) translateY(6px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes shimmerSweep {
+      from { left: -100%; }
+      to   { left: 120%; }
+    }
+
+    .tier-row-drop {
+      transition: border 0.4s cubic-bezier(0.4,0,0.2,1),
+                  box-shadow 0.4s cubic-bezier(0.4,0,0.2,1),
+                  background 0.4s cubic-bezier(0.4,0,0.2,1);
+    }
+    .thumb-wrap {
+      transition: border 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+    }
+    .lb-input:focus {
+      outline: none;
+      border-color: #A08C5B !important;
+      box-shadow: 0 0 0 2px rgba(160,140,91,0.35);
+    }
+    .lb-input::placeholder { color: #555555; }
+    .inline-title-input { outline: none; }
+    .inline-title-input::placeholder { color: #555555; }
+    .upload-zone { transition: border 0.4s ease, background 0.4s ease; }
+    .upload-zone:hover {
+      border-color: #A08C5B !important;
+      background: rgba(160,140,91,0.06) !important;
+    }
+    .btn-primary {
+      position: relative; overflow: hidden;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 11px;
+      letter-spacing: 0.16em; text-transform: uppercase;
+      padding: 10px 20px;
+      background: #A08C5B; color: #141619;
+      border: 1px solid #A08C5B; border-radius: 2px;
+      cursor: pointer; transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+    }
+    .btn-primary:hover {
+      background: #BFA76F; border-color: #BFA76F;
+      box-shadow: 0 8px 30px -8px rgba(160,140,91,0.55);
+    }
+    .btn-ghost {
+      font-family: 'DM Mono', monospace; font-size: 11px;
+      color: #8A8A8A; text-transform: uppercase; letter-spacing: 0.14em;
+      padding: 8px 4px; border-bottom: 1px solid #555555;
+      background: transparent;
+      border-top: none; border-left: none; border-right: none;
+      cursor: pointer; transition: all 0.3s ease;
+    }
+    .btn-ghost:hover { color: #A08C5B; border-color: #A08C5B; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const { useState, useRef, useEffect, createElement: h } = React;
+
+    const C = {
+      bg:           '#141619',
+      bgElevated:   '#1B1D22',
+      gold:         '#A08C5B',
+      goldBright:   '#BFA76F',
+      goldGlow:     'rgba(160,140,91,0.35)',
+      goldGlowStr:  'rgba(160,140,91,0.55)',
+      textPrimary:  '#ECECEC',
+      textSecondary:'#8A8A8A',
+      textMuted:    '#555555',
+      border:       'rgba(160,140,91,0.18)',
+      borderSubtle: '#252830',
+    };
+
+    const FONT = {
+      display: "'Manrope', sans-serif",
+      body:    "'Barlow Condensed', sans-serif",
+      mono:    "'DM Mono', monospace",
+      serif:   "'Playfair Display', serif",
+    };
+
+    const TIERS = [
+      { id:'S', label:'S', color:C.gold,      glow:C.goldGlow },
+      { id:'A', label:'A', color:'#BFA76F',   glow:'rgba(191,167,111,0.3)' },
+      { id:'B', label:'B', color:'#8A8A8A',   glow:'rgba(138,138,138,0.25)' },
+      { id:'C', label:'C', color:'#6E7A8A',   glow:'rgba(110,122,138,0.25)' },
+      { id:'D', label:'D', color:'#555E6B',   glow:'rgba(85,94,107,0.2)' },
+      { id:'F', label:'F', color:'#3A3F48',   glow:'rgba(58,63,72,0.2)' },
+    ];
+
+    const GUIDE = [
+      ['S','All-timer'],['A','Excellent'],['B','Solid'],
+      ['C','Average'],['D','Weak'],['F','Skip it'],
+    ];
+
+    // ── ImageThumb ─────────────────────────────────────────────────────────────
+    function ImageThumb({ img, tierId, glowing, onDragStart, onDragEnd, onRemove, onClickImage, onTitleChange }) {
+      const [hovered, setHovered]           = useState(false);
+      const [editingTitle, setEditingTitle] = useState(false);
+
+      return h('div', {
+        style: { display:'flex', flexDirection:'column', alignItems:'center', gap:5, flexShrink:0, width:76 }
+      },
+        // Thumbnail wrapper
+        h('div', {
+          className: 'thumb-wrap',
+          draggable: true,
+          onDragStart: (e) => onDragStart(e, img.id, tierId),
+          onDragEnd,
+          onMouseEnter: () => setHovered(true),
+          onMouseLeave: () => setHovered(false),
+          style: {
+            position:'relative', width:76, height:76,
+            borderRadius:4, overflow:'hidden', cursor:'grab', flexShrink:0,
+            border: glowing
+              ? `1px solid ${C.gold}`
+              : hovered ? `1px solid rgba(160,140,91,0.55)` : `1px solid ${C.borderSubtle}`,
+            boxShadow: glowing
+              ? `0 0 24px 6px ${C.goldGlowStr}, 0 18px 40px -10px ${C.goldGlow}`
+              : hovered ? `0 8px 30px -8px ${C.goldGlow}` : 'none',
+            transform: glowing ? 'scale(1.06) translateY(-3px)' : hovered ? 'scale(1.03) translateY(-2px)' : 'scale(1)',
+          }
+        },
+          h('img', {
+            src: img.src, alt: img.title || img.name,
+            draggable: false,
+            style: { width:'100%', height:'100%', objectFit:'cover', display:'block', pointerEvents:'none', userSelect:'none' }
+          }),
+          hovered && !glowing && h('div', {
+            style: {
+              position:'absolute', top:0, bottom:0, width:'60%',
+              background:'linear-gradient(120deg, transparent, rgba(255,255,255,0.1), transparent)',
+              animation:'shimmerSweep 0.7s ease forwards', pointerEvents:'none'
+            }
+          }),
+          glowing && h('div', {
+            style: {
+              position:'absolute', inset:0,
+              background:'linear-gradient(135deg, rgba(160,140,91,0.38) 0%, rgba(191,167,111,0.15) 100%)',
+              animation:'goldPop 1.4s ease-out forwards', pointerEvents:'none'
+            }
+          }),
+          hovered && h('button', {
+            onClick: (e) => { e.stopPropagation(); onClickImage(img.id); },
+            title: 'Enlarge',
+            style: {
+              position:'absolute', bottom:3, left:3, width:20, height:20, borderRadius:2,
+              background:'rgba(20,22,25,0.9)', border:`1px solid rgba(160,140,91,0.5)`,
+              color:C.gold, fontSize:11, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', padding:0, lineHeight:1, fontFamily:FONT.mono,
+            }
+          }, '⤢'),
+          hovered && h('button', {
+            onClick: (e) => { e.stopPropagation(); onRemove(tierId, img.id); },
+            style: {
+              position:'absolute', top:3, right:3, width:18, height:18, borderRadius:2,
+              background:'rgba(20,22,25,0.9)', border:`1px solid rgba(160,140,91,0.5)`,
+              color:C.gold, fontSize:8, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', padding:0, lineHeight:1, fontFamily:FONT.mono,
+            }
+          }, '✕')
+        ),
+        // Inline title
+        editingTitle
+          ? h('input', {
+              autoFocus: true,
+              className: 'inline-title-input',
+              value: img.title || '',
+              onChange: (e) => onTitleChange(img.id, e.target.value),
+              onBlur: () => setEditingTitle(false),
+              onKeyDown: (e) => { if (e.key === 'Enter') setEditingTitle(false); },
+              placeholder: 'Title...',
+              style: {
+                width:'100%', background:C.bg, border:`1px solid rgba(160,140,91,0.4)`,
+                borderRadius:2, color:C.textPrimary,
+                fontFamily:FONT.mono, fontSize:8, letterSpacing:'0.06em',
+                padding:'3px 5px', textAlign:'center',
+              }
+            })
+          : h('div', {
+              onClick: () => setEditingTitle(true),
+              title: 'Click to edit title',
+              onMouseEnter: (e) => { e.currentTarget.style.borderColor='rgba(160,140,91,0.25)'; e.currentTarget.style.color=C.textSecondary; },
+              onMouseLeave: (e) => { e.currentTarget.style.borderColor='transparent'; e.currentTarget.style.color=img.title?C.textSecondary:C.textMuted; },
+              style: {
+                width:'100%', fontFamily:FONT.mono, fontSize:8,
+                letterSpacing:'0.06em', textTransform:'uppercase',
+                color: img.title ? C.textSecondary : C.textMuted,
+                textAlign:'center', cursor:'text',
+                whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
+                padding:'2px 3px', borderRadius:2,
+                border:'1px solid transparent',
+                transition:'border 0.2s ease, color 0.2s ease', userSelect:'none',
+              }
+            }, img.title || 'add title')
+      );
+    }
+
+    // ── TierList ───────────────────────────────────────────────────────────────
+    function TierList() {
+      const [images, setImages]           = useState({});
+      const [tierContents, setTierContents] = useState(() => {
+        const obj = { unranked: [] };
+        TIERS.forEach(t => (obj[t.id] = []));
+        return obj;
+      });
+      const [dragOver, setDragOver] = useState(null);
+      const [glowIds,  setGlowIds]  = useState(new Set());
+      const [lightbox, setLightbox] = useState(null);
+      const [lbTitle,  setLbTitle]  = useState('');
+      const fileInputRef = useRef();
+      const draggingRef  = useRef(null);
+      const lbInputRef   = useRef();
+
+      useEffect(() => {
+        if (lightbox) setTimeout(() => lbInputRef.current && lbInputRef.current.focus(), 60);
+      }, [lightbox]);
+
+      useEffect(() => {
+        const handler = (e) => { if (e.key === 'Escape') closeLightbox(); };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+      });
+
+      const openLightbox = (id) => { setLightbox(id); setLbTitle(images[id]?.title || ''); };
+      const saveLbTitle  = ()   => { if (!lightbox) return; setImages(p => ({ ...p, [lightbox]: { ...p[lightbox], title: lbTitle } })); };
+      const closeLightbox = ()  => {
+        if (lightbox) setImages(p => ({ ...p, [lightbox]: { ...p[lightbox], title: lbTitle } }));
+        setLightbox(null); setLbTitle('');
+      };
+      const updateInlineTitle = (id, val) => setImages(p => ({ ...p, [id]: { ...p[id], title: val } }));
+
+      const readFiles = (files) => {
+        Array.from(files).forEach(file => {
+          if (!file.type.startsWith('image/')) return;
+          const id = `img-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            setImages(p => ({ ...p, [id]: { id, src: e.target.result, name: file.name, title: '' } }));
+            setTierContents(p => ({ ...p, unranked: [...p.unranked, id] }));
+          };
+          reader.readAsDataURL(file);
+        });
+      };
+
+      const handleDragStart = (e, imageId, fromTier) => {
+        draggingRef.current = { imageId, fromTier };
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', imageId);
+      };
+      const handleDragEnd = () => { draggingRef.current = null; setDragOver(null); };
+      const handleDragOver = (e, tierId) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(tierId); };
+      const handleDragLeave = (e, tierId) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(p => p === tierId ? null : p);
+      };
+      const handleDrop = (e, toTier) => {
+        e.preventDefault(); setDragOver(null);
+        const cur = draggingRef.current; if (!cur) return;
+        const { imageId, fromTier } = cur; draggingRef.current = null;
+        if (fromTier === toTier) return;
+        setTierContents(p => ({
+          ...p,
+          [fromTier]: p[fromTier].filter(id => id !== imageId),
+          [toTier]:   [...p[toTier], imageId],
+        }));
+        setGlowIds(p => new Set([...p, imageId]));
+        setTimeout(() => setGlowIds(p => { const n = new Set(p); n.delete(imageId); return n; }), 1400);
+      };
+      const removeImage = (tierId, imageId) => {
+        setTierContents(p => ({ ...p, [tierId]: p[tierId].filter(id => id !== imageId) }));
+        setImages(p => { const n = { ...p }; delete n[imageId]; return n; });
+      };
+
+      const totalImages = Object.keys(images).length;
+      const lightboxImg = lightbox ? images[lightbox] : null;
+
+      return h('div', { style: { minHeight:'100vh', background:C.bg, color:C.textPrimary, fontFamily:FONT.body } },
+        // Page wrapper
+        h('div', { style: { maxWidth:1200, margin:'0 auto', padding:'40px 24px' } },
+
+          // Header
+          h('div', { style: { marginBottom:40, borderBottom:`1px solid ${C.borderSubtle}`, paddingBottom:28 } },
+            h('div', { style: { fontFamily:FONT.mono, fontSize:10, letterSpacing:'0.18em', color:C.gold, textTransform:'uppercase', marginBottom:10 } }, 'Content Intelligence'),
+            h('h1', { style: { fontFamily:FONT.display, fontWeight:800, fontSize:'clamp(22px,4vw,36px)', letterSpacing:'-0.02em', color:C.textPrimary, margin:'0 0 10px' } }, 'Tier List Builder'),
+            h('p',  { style: { fontFamily:FONT.serif, fontStyle:'italic', fontSize:'1.05rem', color:C.textSecondary, margin:0 } }, 'Rank what works. Eliminate what doesn\'t.')
+          ),
+
+          // Main layout
+          h('div', { style: { display:'flex', gap:24, alignItems:'flex-start' } },
+
+            // Tier rows
+            h('div', { style: { flex:1, display:'flex', flexDirection:'column', gap:4 } },
+              TIERS.map(tier => {
+                const isOver = dragOver === tier.id;
+                const ids    = tierContents[tier.id];
+                return h('div', {
+                  key: tier.id,
+                  className: 'tier-row-drop',
+                  onDragOver:  (e) => handleDragOver(e, tier.id),
+                  onDragLeave: (e) => handleDragLeave(e, tier.id),
+                  onDrop:      (e) => handleDrop(e, tier.id),
+                  style: {
+                    display:'flex', alignItems:'stretch', minHeight:94,
+                    borderRadius:4, overflow:'hidden',
+                    border:      isOver ? `1px solid ${C.gold}` : `1px solid ${C.borderSubtle}`,
+                    boxShadow:   isOver ? `0 0 28px -4px ${C.goldGlow}` : 'none',
+                    background:  isOver ? 'rgba(160,140,91,0.06)' : C.bgElevated,
+                  }
+                },
+                  h('div', {
+                    style: {
+                      width:58, minWidth:58, flexShrink:0,
+                      display:'flex', alignItems:'center', justifyContent:'center',
+                      background: tier.color + '14', borderRight:`1px solid ${tier.color}44`,
+                    }
+                  },
+                    h('span', { style: { fontFamily:FONT.display, fontWeight:800, fontSize:24, color:tier.color, letterSpacing:'-0.02em', textShadow:`0 0 20px ${tier.glow}` } }, tier.label)
+                  ),
+                  h('div', { style: { flex:1, display:'flex', flexWrap:'wrap', gap:10, padding:'10px 14px', alignContent:'flex-start', minHeight:94 } },
+                    ids.length === 0 && h('div', { style: { fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', color:C.textMuted, textTransform:'uppercase', alignSelf:'center', userSelect:'none' } }, 'Drop here'),
+                    ids.map(imgId => {
+                      const img = images[imgId]; if (!img) return null;
+                      return h(ImageThumb, { key:imgId, img, tierId:tier.id, glowing:glowIds.has(imgId), onDragStart:handleDragStart, onDragEnd:handleDragEnd, onRemove:removeImage, onClickImage:openLightbox, onTitleChange:updateInlineTitle });
+                    })
+                  )
+                );
+              })
+            ),
+
+            // Right panel
+            h('div', { style: { width:220, flexShrink:0, display:'flex', flexDirection:'column', gap:14 } },
+
+              // Upload zone
+              h('div', {
+                className: 'upload-zone',
+                onClick: () => fileInputRef.current && fileInputRef.current.click(),
+                onDragOver:  (e) => { e.preventDefault(); setDragOver('upload'); },
+                onDragLeave: ()  => setDragOver(null),
+                onDrop: (e) => { e.preventDefault(); setDragOver(null); readFiles(e.dataTransfer.files); },
+                style: {
+                  border: dragOver === 'upload' ? `1px solid ${C.gold}` : 'none',
+                  outline: dragOver === 'upload' ? 'none' : `1px dashed rgba(160,140,91,0.3)`,
+                  borderRadius:4, padding:'20px 14px', textAlign:'center',
+                  cursor:'pointer',
+                  background: dragOver === 'upload' ? 'rgba(160,140,91,0.06)' : 'transparent',
+                  userSelect:'none',
+                }
+              },
+                h('div', { style: { fontFamily:FONT.mono, fontSize:18, color:C.gold, marginBottom:8, opacity:0.6 } }, '↑'),
+                h('div', { style: { fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', color:C.gold, textTransform:'uppercase', lineHeight:1.8 } }, 'Click or drop', h('br'), 'images to upload'),
+                totalImages > 0 && h('div', { style: { fontFamily:FONT.mono, fontSize:9, color:C.textMuted, marginTop:10, letterSpacing:'0.1em' } }, `${totalImages} image${totalImages !== 1 ? 's' : ''} loaded`),
+                h('input', { ref:fileInputRef, type:'file', accept:'image/*', multiple:true, style:{ display:'none' }, onChange:(e) => readFiles(e.target.files) })
+              ),
+
+              // Unranked
+              h('div', {
+                onDragOver:  (e) => handleDragOver(e, 'unranked'),
+                onDragLeave: (e) => handleDragLeave(e, 'unranked'),
+                onDrop:      (e) => handleDrop(e, 'unranked'),
+                style: {
+                  border: dragOver === 'unranked' ? `1px solid ${C.gold}` : `1px solid ${C.borderSubtle}`,
+                  borderRadius:4, padding:14, minHeight:110,
+                  background: dragOver === 'unranked' ? 'rgba(160,140,91,0.05)' : C.bgElevated,
+                  boxShadow: dragOver === 'unranked' ? `0 0 24px -4px ${C.goldGlow}` : 'none',
+                  transition:'all 0.4s cubic-bezier(0.4,0,0.2,1)',
+                }
+              },
+                h('div', { style: { fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', color:C.textMuted, textTransform:'uppercase', marginBottom:12 } }, 'Unranked'),
+                h('div', { style: { display:'flex', flexWrap:'wrap', gap:8 } },
+                  tierContents.unranked.length === 0 && h('div', { style: { fontFamily:FONT.mono, fontSize:9, color:C.textMuted, letterSpacing:'0.1em', lineHeight:1.6 } }, totalImages === 0 ? 'Upload images above' : 'All ranked.'),
+                  tierContents.unranked.map(imgId => {
+                    const img = images[imgId]; if (!img) return null;
+                    return h(ImageThumb, { key:imgId, img, tierId:'unranked', glowing:glowIds.has(imgId), onDragStart:handleDragStart, onDragEnd:handleDragEnd, onRemove:removeImage, onClickImage:openLightbox, onTitleChange:updateInlineTitle });
+                  })
+                )
+              ),
+
+              // Divider
+              h('div', { style: { borderTop:`1px solid ${C.borderSubtle}` } }),
+
+              // Guide
+              h('div', null,
+                h('div', { style: { fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', color:C.textMuted, textTransform:'uppercase', marginBottom:12 } }, 'Scale'),
+                GUIDE.map(([t, desc]) => {
+                  const tier = TIERS.find(x => x.id === t);
+                  return h('div', { key:t, style: { display:'flex', alignItems:'center', gap:12, marginBottom:7, borderBottom:`1px solid ${C.borderSubtle}`, paddingBottom:7 } },
+                    h('span', { style: { fontFamily:FONT.display, fontWeight:700, fontSize:13, color:tier.color, width:14, flexShrink:0 } }, t),
+                    h('span', { style: { fontFamily:FONT.body, fontSize:13, color:C.textSecondary, letterSpacing:'0.03em' } }, desc)
+                  );
+                })
+              )
+            )
+          )
+        ),
+
+        // Lightbox
+        lightbox && lightboxImg && h('div', {
+          onClick: closeLightbox,
+          style: {
+            position:'fixed', inset:0, zIndex:1000,
+            background:'rgba(10,11,14,0.93)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            backdropFilter:'blur(8px)',
+          }
+        },
+          h('div', {
+            onClick: (e) => e.stopPropagation(),
+            style: {
+              background:C.bgElevated, border:`1px solid ${C.gold}`, borderRadius:4,
+              boxShadow:`0 24px 80px -12px ${C.goldGlow}, 0 0 0 1px ${C.border}`,
+              padding:28, maxWidth:'min(580px, 90vw)', width:'100%',
+              animation:'fadeIn 0.2s cubic-bezier(0.16,1,0.3,1)',
+              display:'flex', flexDirection:'column', gap:18,
+            }
+          },
+            h('div', { style: { borderRadius:4, overflow:'hidden', border:`1px solid ${C.borderSubtle}` } },
+              h('img', { src:lightboxImg.src, alt:lightboxImg.title||lightboxImg.name, style:{ width:'100%', maxHeight:'58vh', objectFit:'contain', display:'block', background:C.bg } })
+            ),
+            h('div', null,
+              h('div', { style: { fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', color:C.gold, textTransform:'uppercase', marginBottom:8 } }, 'Title'),
+              h('input', {
+                ref: lbInputRef, className:'lb-input',
+                value: lbTitle,
+                onChange: (e) => setLbTitle(e.target.value),
+                onKeyDown: (e) => { if (e.key === 'Enter') { saveLbTitle(); closeLightbox(); } },
+                placeholder: 'Add a title...',
+                style: {
+                  width:'100%', background:C.bg, border:`1px solid ${C.borderSubtle}`,
+                  borderRadius:4, color:C.textPrimary,
+                  fontFamily:FONT.body, fontSize:15, fontWeight:500,
+                  padding:'10px 12px', transition:'border 0.3s ease, box-shadow 0.3s ease',
+                }
+              })
+            ),
+            h('div', { style: { display:'flex', gap:10, justifyContent:'flex-end' } },
+              h('button', { className:'btn-ghost', onClick:closeLightbox }, 'Close'),
+              h('button', { className:'btn-primary', onClick:() => { saveLbTitle(); closeLightbox(); } }, 'Save')
+            )
+          )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(TierList));
+  </script>
+</body>
+</html>
